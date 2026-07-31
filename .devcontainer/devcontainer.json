@@ -18,10 +18,11 @@
     "cpus": 4
   },
 
-  "forwardPorts": [3000, 3001, 9323],
+  "forwardPorts": [3000, 3001, 8080, 9323],
   "portsAttributes": {
-    "3000": { "label": "loan-webapp", "onAutoForward": "notify" },
-    "3001": { "label": "lending-webapp", "onAutoForward": "notify" },
+    "3000": { "label": "loan-webapp", "protocol": "https", "onAutoForward": "notify" },
+    "3001": { "label": "lending-webapp", "protocol": "https", "onAutoForward": "notify" },
+    "8080": { "label": "Playwright UI Mode", "onAutoForward": "notify" },
     "9323": { "label": "Playwright HTML report", "onAutoForward": "silent" }
   },
 

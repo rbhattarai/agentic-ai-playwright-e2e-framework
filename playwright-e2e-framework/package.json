@@ -5,7 +5,7 @@
     "test": "playwright test",
     "test:headed": "PLAYWRIGHT_HEADLESS=false playwright test",
     "test:debug": "playwright test --debug",
-    "test:ui": "playwright test --ui",
+    "test:ui": "playwright test --ui --ui-host=0.0.0.0 --ui-port=8080",
     "test:chromium": "playwright test --project=chromium",
     "test:grep": "playwright test --grep",
     "report": "playwright show-report reports",
