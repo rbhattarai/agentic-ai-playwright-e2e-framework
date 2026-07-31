@@ -18,10 +18,12 @@
     "cpus": 4
   },
 
-  "forwardPorts": [3000, 3001, 8080, 9323],
+  "forwardPorts": [3000, 3001, 3100, 3101, 8080, 9323],
   "portsAttributes": {
-    "3000": { "label": "loan-webapp", "protocol": "https", "onAutoForward": "notify" },
-    "3001": { "label": "lending-webapp", "protocol": "https", "onAutoForward": "notify" },
+    "3000": { "label": "loan-webapp (HTTPS, direct — for tests/curl only, not browsable via forwarding)", "onAutoForward": "silent" },
+    "3001": { "label": "lending-webapp (HTTPS, direct — for tests/curl only, not browsable via forwarding)", "onAutoForward": "silent" },
+    "3100": { "label": "loan-webapp (open this in your browser)", "onAutoForward": "notify" },
+    "3101": { "label": "lending-webapp (open this in your browser)", "onAutoForward": "notify" },
     "8080": { "label": "Playwright UI Mode", "onAutoForward": "notify" },
     "9323": { "label": "Playwright HTML report", "onAutoForward": "silent" }
   },
