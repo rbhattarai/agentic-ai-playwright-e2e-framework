@@ -1,0 +1,42 @@
+# workspace.yaml — multi-unit manifest for the loan-product demo.
+# Demo walkthrough and template live in the se-harness Claude Code plugin repo,
+# https://github.com/rbhattarai/se-harness
+# (docs/demo/README.md Part 2, templates/workspace.yaml).
+#
+# The two webapps are code units. The shared data/ JSON store is NOT a unit —
+# its record shapes are declared as contracts below, so contract-check.sh (se-harness)
+# flags the consumer unit whenever a provider changes a shared record shape or the
+# webhook protocol.
+
+workspace:
+  name: loan-product
+  topology: mono-repo        # both units live at the root of this repo, side by side
+  layout: domain
+
+  shared:
+    org: {}
+    mcp: []
+    jira_project: ""
+
+  units:
+    - name: loan-webapp
+      path: loan-webapp
+      stack: [node, typescript, express, ejs, docker]
+    - name: lending-webapp
+      path: lending-webapp
+      stack: [node, typescript, express, ejs, docker]
+
+  run:
+    compose: docker-compose.yml   # goal-loop step 8 verifies against this stack
+
+# NOTE: contract `file:` paths are matched against `git diff --name-only` output,
+# so they must be repo-root-relative.
+contracts:
+  - name: loan-record
+    file: contracts/loan-record.md
+    provider: loan-webapp
+    consumers: [lending-webapp]
+  - name: notify-webhook
+    file: contracts/notify-webhook.md
+    provider: lending-webapp
+    consumers: [loan-webapp]
