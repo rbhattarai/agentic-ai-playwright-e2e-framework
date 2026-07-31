@@ -4,7 +4,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEMO_APP_DIR="$REPO_ROOT/../demo-loan-app"
+DEMO_APP_DIR="$REPO_ROOT/demo-loan-app"
 
 if [ -d "$DEMO_APP_DIR" ]; then
   (cd "$DEMO_APP_DIR" && docker compose up -d)
