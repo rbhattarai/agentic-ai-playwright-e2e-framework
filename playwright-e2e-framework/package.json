@@ -1,0 +1,30 @@
+{
+  "name": "playwright-e2e-framework",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "PLAYWRIGHT_HEADLESS=false playwright test",
+    "test:debug": "playwright test --debug",
+    "test:ui": "playwright test --ui",
+    "test:chromium": "playwright test --project=chromium",
+    "test:grep": "playwright test --grep",
+    "report": "playwright show-report reports",
+    "report:step": "node -e \"const {execSync}=require('child_process');const p='reports/step-report/index.html';try{execSync(process.platform==='win32'?'start '+p:process.platform==='darwin'?'open '+p:'xdg-open '+p,{stdio:'ignore'})}catch(e){}\"",
+    "send-report": "node utils/send-report-email.js",
+    "xray:upload": "ts-node utils/xray-upload.ts"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.58.0",
+    "dotenv": "^16.3.1",
+    "pg": "^8.16.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "@types/pg": "^8.15.6",
+    "axios": "^1.7.0",
+    "form-data": "^4.0.0",
+    "nodemailer": "^6.9.4"
+  }
+}

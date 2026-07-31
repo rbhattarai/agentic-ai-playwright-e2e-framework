@@ -1,0 +1,130 @@
+image: mcr.microsoft.com/playwright:v1.55.0-noble
+
+stages:
+  - validate
+  - test
+  - xray
+  - notify
+
+variables:
+  # Ensure npm CI installs reproducible deps
+  NODE_ENV: dev
+  # Allow Playwright to run headless in CI unless overridden
+  PLAYWRIGHT_HEADLESS: 'true'
+  # Default test tag for run_test.sh
+  TAG: '@SmokeTest'
+  # Avoid interactive prompts
+  CI: 'true'
+  # Target environment (dev, qa, uat, prod). CI job passes this to run_test.sh
+  ENV: 'dev'
+  # Optional: Specific apps to test (comma-separated). If empty, uses all apps from apps.config.json
+  APPS: ''
+
+# Reset Cache
+cache: []
+
+# cache:
+#   key: ${CI_PROJECT_ID}
+#   paths:
+#     - node_modules/
+
+before_script:
+  - cat /etc/os-release
+  - node -v
+  - npm -v
+  # Install project dependencies
+  - npm install
+  # Install playwright browsers matching the project version (image already includes browsers,
+  # but this ensures compatibility if you upgrade Playwright in package.json)
+  - npx playwright install --with-deps || true
+  - cp certs/ca-certs.crt /usr/local/share/ca-certificates/ca-certs.crt 
+  - update-ca-certificates 
+  # Variables Check::
+  - echo $APP_NAME
+
+validate_env:
+  stage: validate
+  script:
+    - echo "🔍 Validating environment file for ENV=${ENV}"
+    - chmod +x scripts/validate-env.sh || true
+    - ./scripts/validate-env.sh ".${ENV}.env"
+  tags:
+    - docker
+  when: always
+  allow_failure: false
+
+run_tests:
+  stage: test
+  script:
+    - echo "📦 Preparing test environment for ENV=${ENV}"
+    # Ensure reports directory exists
+    - mkdir -p reports
+    # Download certificates from GitLab Secure Files
+    - chmod +x scripts/download-certs.sh || true
+    - ./scripts/download-certs.sh
+    # Run tests with v2.1 simplified command (no -nocert, no -role)
+    - chmod +x ./run_test.sh || true
+    - |
+      if [ -n "$APPS" ]; then
+        echo "🎯 Testing specific apps: $APPS"
+        ./run_test.sh -apps="${APPS}" -env="${ENV}" -tags="${TAG}"
+      else
+        echo "🎯 Testing all apps from apps.config.json"
+        ./run_test.sh -env="${ENV}" -tags="${TAG}"
+      fi
+  artifacts:
+    when: always
+    paths:
+      - reports/
+      - reports/step-report/
+    expire_in: 1 week
+  retry: 1
+  tags:
+    - docker
+
+upload_to_xray:
+  stage: xray
+  needs:
+    - job: run_tests
+      artifacts: true
+  script:
+    - echo "📤 Uploading test results to Xray"
+    # Setup CA certificates and validate environment
+    - chmod +x scripts/xray-upload-setup.sh || true
+    - source scripts/xray-upload-setup.sh
+    # Upload results to Xray
+    - npm run xray:upload
+  variables:
+    JIRA_BASE_URL: 'https://aosqa.atlassian.net'
+  only:
+    - main
+  tags:
+    - docker
+  when: always
+  artifacts:
+    paths:
+      - reports/
+    expire_in: 1 week
+  allow_failure: true
+
+send_report:
+  stage: notify
+  needs:
+    - job: run_tests
+      artifacts: true
+  script:
+    - echo "📧 Sending test report email..."
+    - ls -la reports || true
+    - npm run send-report || echo "⚠️  Failed to send report email"
+  when: always
+  artifacts:
+    paths:
+      - reports/coverage-report.html
+      - reports/index.html
+      - reports/step-report/
+    expire_in: 1 week
+  retry: 1
+  timeout: 5m
+  tags:
+    - docker
+

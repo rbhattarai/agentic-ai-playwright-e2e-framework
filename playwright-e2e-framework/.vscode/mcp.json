@@ -1,0 +1,17 @@
+{
+  "servers": {
+    "playwright-test": {
+      "command": "npx",
+      "args": [
+        "playwright",
+        "run-test-mcp-server"
+      ]
+    },
+    "jira": {
+      "command": "node",
+      "args": [
+        "scripts/jira-mcp-server.js"
+      ]
+    }
+  }
+}

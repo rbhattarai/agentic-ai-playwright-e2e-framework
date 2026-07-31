@@ -1,0 +1,48 @@
+{
+  "loan-app": {
+    "name": "Loan Application",
+    "baseUrl": "${LOAN_APP_URL}",
+    "defaultCertProfile": "default-loan",
+    "certConfig": {
+      "enabled": true,
+      "profiles": {
+        "default-loan": {
+          "type": "p12-to-pem",
+          "certAlias": "default",
+          "match": {
+            "type": "glob",
+            "value": "cn=aosqa.p*"
+          },
+          "passwordEnvVar": "LOAN_CERT_P12_BASE64",
+          "metadata": {
+            "role": "admin"
+          }
+        }
+      }
+    },
+    "description": "Main loan management application"
+  },
+ "lending-app": {
+    "name": "Lending Application",
+    "baseUrl": "${LENDING_APP_URL}",
+    "defaultCertProfile": "default-lending",
+    "certConfig": {
+      "enabled": true,
+      "profiles": {
+        "default-lending": {
+          "type": "p12-to-pem",
+          "certAlias": "default",
+          "match": {
+            "type": "glob",
+            "value": "cn=aosqa.p*"
+          },
+          "passwordEnvVar": "LENDING_CERT_P12_BASE64",
+          "metadata": {
+            "role": "admin"
+          }
+        }
+      }
+    },
+    "description": "Lending application with custom certificate format"
+  }
+}

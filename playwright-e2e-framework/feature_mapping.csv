@@ -1,0 +1,5 @@
+user_story,feature,jira_key
+US-1,E2E Loan Approval Workflow,SCRUM-5
+US-2,E2E Loan Rejection Workflow,SCRUM-6
+US-3,Lending Approver Management,SCRUM-7
+US-4,Loan Management,SCRUM-8

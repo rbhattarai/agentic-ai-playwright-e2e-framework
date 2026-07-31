@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "jira": {
+      "command": "node",
+      "args": ["scripts/jira-mcp-server.js"]
+    }
+  }
+}

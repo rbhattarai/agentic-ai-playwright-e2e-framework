@@ -1,0 +1,45 @@
+{
+  "name": "playwright-e2e-framework (workshop)",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
+
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "moby": true
+    }
+  },
+
+  // 4 cores keeps Docker (2 apps) + Playwright + the CLI agents responsive.
+  // Still well inside the free 120 core-hour/month Codespaces quota for a 2hr workshop (~8 core-hours used).
+  "hostRequirements": {
+    "cpus": 4
+  },
+
+  "forwardPorts": [3000, 3001, 9323],
+  "portsAttributes": {
+    "3000": { "label": "loan-webapp", "onAutoForward": "notify" },
+    "3001": { "label": "lending-webapp", "onAutoForward": "notify" },
+    "9323": { "label": "Playwright HTML report", "onAutoForward": "silent" }
+  },
+
+  "postCreateCommand": "bash .devcontainer/postCreate.sh",
+  "postStartCommand": "bash .devcontainer/postStart.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-playwright.playwright",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "anthropic.claude-code"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+
+  "remoteEnv": {
+    "ENV": "dev"
+  }
+}

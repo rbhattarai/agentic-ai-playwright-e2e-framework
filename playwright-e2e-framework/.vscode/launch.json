@@ -1,0 +1,41 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Playwright Test",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": ["run", "test"],
+            "console": "integratedTerminal",
+            "skipFiles": ["<node_internals>/**"]
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Playwright Debug",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": ["run", "test:debug"],
+            "console": "integratedTerminal",
+            "skipFiles": ["<node_internals>/**"]
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Playwright UI",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": ["run", "test:ui"],
+            "console": "integratedTerminal",
+            "skipFiles": ["<node_internals>/**"]
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Playwright Headed",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": ["run", "test:headed"],
+            "console": "integratedTerminal",
+            "skipFiles": ["<node_internals>/**"]
+        }
+    ]
+}

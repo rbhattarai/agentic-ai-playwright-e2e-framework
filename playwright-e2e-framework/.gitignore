@@ -1,0 +1,13 @@
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+reports
+dist
+# certs/ is intentionally tracked: it's a disposable self-signed demo cert
+# (openssl-generated locally, no real-world trust value) shared by
+# playwright-e2e-framework and demo-loan-app so the workshop needs zero cert setup.
+.*.env
+requirements/*/attachments/
