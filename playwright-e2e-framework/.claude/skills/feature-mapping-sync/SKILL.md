@@ -1,48 +1,66 @@
 ---
 name: feature-mapping-sync
-description: Scans tests/ for Jira-tagged specs (@SCRUM-XXX) missing from feature_mapping.csv, which drives the custom coverage report (utils/custom-reporter.ts). Adds missing rows directly and reports what changed. Use when asked to sync/update feature mapping, check coverage report accuracy, or after generating new spec files (e.g. by the NEW TESTS pipeline).
+description: Syncs feature_mapping.csv (user_story_key,issue_summary,test_case_keys — drives the coverage report in utils/custom-reporter.ts and the email report) from the Jira tags on Playwright specs — story keys on test.describe blocks become rows, Xray test-case keys tagged on individual tests go into the row's test_case_keys column. Adds missing rows/keys directly and reports not-yet-automated stories or unattributed keys. Use when asked to sync/update feature mapping or check coverage report accuracy; called by test-orchestrator after generating specs and by test-case-creator after tagging specs with new test-case keys.
 ---
 
-`feature_mapping.csv` (repo root, columns `user_story,feature,jira_key`) maps Jira story
-keys to feature names for `utils/custom-reporter.ts`'s coverage report
-(`reports/coverage-report.html`). It's hand-maintained and has no automatic check against
-actual spec files — it will silently go stale as new specs get tagged with story keys
-that were never added here (especially now that `test-orchestrator`'s NEW TESTS pipeline
-generates specs from Jira stories directly).
+<!-- Single source of truth for this skill. GitHub Copilot loads it through
+     .github/skills/feature-mapping-sync/SKILL.md — keep instructions here harness-neutral. -->
 
-## 1. Find every Jira key actually referenced in tests
+`feature_mapping.csv` (repo root) maps each Jira user story to its Xray test cases for
+the coverage report (`utils/custom-reporter.ts` → `reports/coverage-report.html`) and
+the emailed summary (`utils/send-report-email.js`). It is **derived from spec tags** —
+the specs are the source of truth, so don't hand-edit keys into the CSV that no spec
+carries.
 
-```bash
-grep -rhoE '@[A-Z]+-[0-9]+' tests/apps --include="*.spec.ts" | sort -u
+## Format
+
+One row per user story:
+
+```csv
+user_story_key,issue_summary,test_case_keys
+SCRUM-5,E2E Loan Approval Workflow,SCRUM-10;SCRUM-11
 ```
 
-(Same key pattern `utils/xray-upload.ts` already scans for:
-`\b[A-Z]+-\d+\b`, restricted here to `@`-prefixed tags specifically since that's the
-Tags Convention.)
+| Column | Meaning |
+|---|---|
+| `user_story_key` | The Jira **user story** key — taken from a `@KEY` tag in a `test.describe` title |
+| `issue_summary` | The story's Jira summary — from `requirements/context-<KEY>.md` (written by `jira-story-reader`) when it exists, otherwise the `test.describe` title with tags stripped |
+| `test_case_keys` | The Xray **test case** keys automating that story, `;`-separated — taken from `@KEY` tags on individual tests inside that describe |
 
-## 2. Diff against the CSV
+Keys are `;`-separated and summaries never contain commas because the reporters' CSV
+parser splits on commas.
 
-Read `feature_mapping.csv`'s `jira_key` column. Any key from step 1 not present there is
-a gap.
+## Tag convention this relies on
 
-## 3. Fill in missing rows
+```ts
+test.describe('Loan Rejection Workflow @MultiApp @SCRUM-4', () => {        // story
+  test('reject a loan', { tag: ['@SCRUM-10'] }, async ({ apps }) => { ... }); // Xray test case
+});
+```
 
-For each missing key:
-- `jira_key`: the key itself.
-- `feature`: derive from the `test.describe` title in the spec file(s) that reference it
-  (strip the `@Tag` suffixes, keep the human-readable part) — don't invent a name
-  unrelated to what the test actually describes.
-- `user_story`: next sequential `US-N` (one past the highest existing `US-` number in the
-  file) unless the spec/context file gives a real story identifier to use instead (e.g.
-  a `requirements/context-<KEY>.md` exists for that key — prefer its actual title).
+## 1. Sync
 
-Add the rows directly (this is a plain tracked CSV, low-risk, git-reversible — no need to
-stage this behind an approval step the way Jira-mutating agents are). Preserve existing
-row order; append new rows at the end.
+```bash
+node .claude/skills/feature-mapping-sync/scripts/sync-feature-mapping.cjs --dry-run   # preview
+node .claude/skills/feature-mapping-sync/scripts/sync-feature-mapping.cjs             # apply
+```
 
-## 4. Report
+The script lists tests with `npx playwright test --list --reporter=json` (no browser or
+running app needed), then:
 
-List exactly which rows were added (key, feature, user_story) and — separately — any
-keys already in the CSV that no longer appear in any spec file (stale entries; report
-these, don't auto-delete them, since a key might be temporarily commented out or the
-removal might be worth a second look before dropping recorded coverage history).
+- appends a row for each story key not yet in the CSV (summary as described above);
+- merges newly tagged test-case keys into the story's row (never removes keys);
+- preserves existing row order and existing summaries;
+- migrates the legacy `user_story,feature,jira_key[,test_case_keys]` header
+  automatically.
+
+Applying directly is fine — it's a plain tracked CSV, low-risk, git-reversible; no
+approval step needed.
+
+## 2. Report
+
+Relay the script's output: rows added, test-case keys added per story, story keys
+**not automated yet** (in the CSV but no spec tags them — expected for stories without
+tests, they show as uncovered in the report; never delete them), and
+**unattributed** test-case keys (tagged on a test with no story key on an enclosing
+describe — the spec needs a story tag on its `test.describe`).

@@ -34,6 +34,13 @@ export default defineConfig({
   ],
   use: {
     headless: process.env.PLAYWRIGHT_HEADLESS === 'true',
+    // Browser launch settings live here (not in a custom `browser` fixture) so Playwright's own
+    // browser is used — required by the playwright-test MCP agents (planner/generator/healer).
+    // PLAYWRIGHT_SLOWMO=0 is set for the MCP server in .mcp.json / .vscode/mcp.json / .cursor/mcp.json.
+    launchOptions: {
+      slowMo: Number(process.env.PLAYWRIGHT_SLOWMO ?? 500),
+      args: ['--start-maximized'],
+    },
     baseURL: process.env.APP_URL, // Legacy single-app mode; multi-app uses apps.config.json
     ignoreHTTPSErrors: true,
     viewport: { width: 1280, height: 720 },

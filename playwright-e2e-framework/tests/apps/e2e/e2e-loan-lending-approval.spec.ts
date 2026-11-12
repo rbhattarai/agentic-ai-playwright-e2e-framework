@@ -14,7 +14,7 @@ import { stepWithScreenshot } from '@helpers/reporting';
  *   ./run_test.sh -apps=loan-app,lending-app -env=dev -tags=@LoanApproval
  */
 
-test.describe('E2E Loan Approval Workflow @LoanApproval @SmokeTest @MultiApp @SCRUM-5', () => {
+test.describe('E2E Loan Approval Workflow @LoanApproval @SmokeTest @MultiApp @SCRUM-1', () => {
   let createdLoanId = '';
   let createdApproverName = '';
 
@@ -40,7 +40,7 @@ test.describe('E2E Loan Approval Workflow @LoanApproval @SmokeTest @MultiApp @SC
     }
   });
 
-  test('Full loan creation, approver assignment, and approval flow', async ({ apps }) => {
+  test('Full loan creation, approver assignment, and approval flow @SCRUM-5, @SCRUM-6', async ({ apps }) => {
     if (!apps['loan-app'] || !apps['lending-app']) {
       test.skip(true, 'Both loan-app and lending-app must be configured');
       return;

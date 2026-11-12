@@ -5,13 +5,24 @@
       "args": [
         "playwright",
         "run-test-mcp-server"
-      ]
+      ],
+      "env": {
+        "PLAYWRIGHT_SLOWMO": "0"
+      }
     },
-    "jira": {
-      "command": "node",
-      "args": [
-        "scripts/jira-mcp-server.js"
-      ]
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "gallery": "https://api.mcp.github.com",
+      "version": "1.12.2"
+    },
+    "Atlassian-Rovo-MCP": {
+      "type": "http",
+      "url": "https://mcp.atlassian.com/v2/mcp"
+    },
+    "gitlab": {
+      "type": "http",
+      "url": "https://gitlab.com/api/v4/mcp"
     }
   }
 }

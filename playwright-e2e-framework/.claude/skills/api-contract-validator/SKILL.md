@@ -76,7 +76,7 @@ For every path + method in the spec:
   `apiContext` — don't create a new ad-hoc fixture, this repo already has one per app
   with cert handling built in.
 - Tag every generated `test.describe` with `@ApiContract` (new tag — add it to the Tags
-  Convention table in `CLAUDE.md` if not already there) plus the owning app's tag
+  Convention list in `AGENTS.md` if not already there) plus the owning app's tag
   convention, so `npx playwright test --grep "@ApiContract"` runs just these.
 - Header comment marking the file as generated (same convention as the models) — these
   are regenerated from the spec, not hand-maintained; if a generated file needs custom

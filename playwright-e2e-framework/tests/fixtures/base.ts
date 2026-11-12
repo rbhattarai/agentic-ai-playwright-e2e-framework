@@ -1,4 +1,4 @@
-import { test as base, APIRequestContext, Browser, BrowserContext, chromium, Page, request } from '@playwright/test';
+import { test as base, APIRequestContext, BrowserContext, Page, request } from '@playwright/test';
 import path from 'path';
 import fs from 'fs';
 import { appManager, AppConfig } from '../../utils/app-manager';
@@ -10,12 +10,69 @@ import { appManager, AppConfig } from '../../utils/app-manager';
  *   test('my test', async ({ page, context, requestContext }) => {
  *     await page.goto(process.env.APP_URL);
  *   });
- * 
+ *
  * MULTI-APP MODE:
  *   test('my test', async ({ apps }) => {
  *     await apps['loan-app'].page.goto(apps['loan-app'].baseUrl);
  *   });
+ *
+ * `browser`, `context`, and `page` are Playwright's BUILT-IN fixtures — never override them
+ * here. The playwright-test MCP agents (planner/generator/healer, via tests/seed.spec.ts) can
+ * only drive the built-in page. Customize them through option fixtures instead
+ * (`clientCertificates`, `viewport`, timeouts below; launch settings in playwright.config.ts).
+ * The built-in context carries a client certificate for every app in apps.config.json (one
+ * per origin), so a single `page` can drive all apps with mTLS.
  */
+
+type ClientCertificate = { origin: string; certPath: string; keyPath: string; passphrase?: string };
+
+/**
+ * Client certificates for the built-in context: one per certificate-enabled app in
+ * apps.config.json (active apps, or all apps when ACTIVE_APPS isn't set), plus the legacy
+ * single-app CERT_PATH/CERT_KEY cert for APP_URL's origin if no app already covers it.
+ * Skips (with a warning) any app whose PEM files haven't been generated yet.
+ */
+function buildClientCertificates(): ClientCertificate[] {
+  const certs: ClientCertificate[] = [];
+  try {
+    if (!process.env.ACTIVE_APPS || appManager.getActiveApps().length === 0) appManager.loadAllApps();
+    for (const appKey of appManager.getActiveApps()) {
+      const appConfig = appManager.getAppConfig(appKey);
+      if (!appConfig.certConfig.enabled) continue;
+      try {
+        const { certPath, keyPath, password } = appManager.getCertPaths(appKey);
+        if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
+          certs.push({
+            origin: new URL(appConfig.baseUrl).origin,
+            certPath: path.resolve(certPath),
+            keyPath: path.resolve(keyPath),
+            passphrase: password,
+          });
+        } else {
+          console.warn(`⚠️  ${appKey}: certificate files not found — run './run_test.sh' to generate them`);
+        }
+      } catch (error) {
+        console.warn(`⚠️  ${appKey}: certificate setup failed: ${error}`);
+      }
+    }
+  } catch (error) {
+    console.warn('⚠️  Could not load apps.config.json for client certificates:', error);
+  }
+
+  // Legacy single-app certificate
+  if (process.env.APP_URL && process.env.CERT_PATH && process.env.CERT_KEY) {
+    const origin = new URL(process.env.APP_URL).origin;
+    if (!certs.some((c) => c.origin === origin)) {
+      certs.push({
+        origin,
+        certPath: path.resolve(process.env.CERT_PATH),
+        keyPath: path.resolve(process.env.CERT_KEY),
+        passphrase: process.env.P12_CERT_PASSWORD || '',
+      });
+    }
+  }
+  return certs;
+}
 
 export type AppContext = {
   page: Page;
@@ -30,29 +87,22 @@ export type AppContexts = {
 };
 
 type UnifiedFixtures = {
-  browser: Browser;
-  // Single-app mode fixtures (legacy)
-  page: Page;
-  context: BrowserContext;
+  // Single-app mode fixture (legacy) — `page`/`context` are the built-in fixtures
   requestContext: APIRequestContext;
   // Multi-app mode fixtures
   apps: AppContexts;
 };
 
 export const test = base.extend<UnifiedFixtures>({
-  browser: async ({}, use) => {
-    const headless = process.env.PLAYWRIGHT_HEADLESS === "true";
-    console.log("🚀 Initializing Browser in PLAYWRIGHT_HEADLESS:", headless);
-    
-    const browser = await chromium.launch({ 
-      headless: headless,
-      slowMo: 500,
-      args: ['--start-maximized'], 
-    });
-    
-    await use(browser);
-    await browser.close();
+  // ===========================================
+  // BUILT-IN page/context OPTIONS (single-app mode + MCP agents)
+  // ===========================================
+  clientCertificates: async ({}, use) => {
+    await use(buildClientCertificates());
   },
+  viewport: { width: 1920, height: 1080 },
+  actionTimeout: 60 * 1000,
+  navigationTimeout: 60 * 1000,
 
   // ===========================================
   // MULTI-APP MODE FIXTURE
@@ -220,61 +270,8 @@ export const test = base.extend<UnifiedFixtures>({
 
   // ===========================================
   // SINGLE-APP MODE FIXTURES (Backward Compatibility)
+  // `page` / `context` are the built-in fixtures, configured by the options above.
   // ===========================================
-  context: async ({ browser }, use) => {
-    // Skip single-app setup if in multi-app mode
-    if (process.env.ACTIVE_APPS) {
-      // @ts-ignore - provide empty context for multi-app mode
-      await use(null);
-      return;
-    }
-
-    if (!process.env.APP_URL) {
-      throw new Error('Missing APP_URL in .env or no apps configured in apps.config.json');
-    }
-
-    let context: BrowserContext;
-
-    // Check if certificate paths are provided
-    const hasCertificates = process.env.CERT_PATH && process.env.CERT_KEY;
-    
-    if (hasCertificates) {
-      console.log('🔐 Single-app mode with certificate');
-      context = await browser.newContext({
-        ignoreHTTPSErrors: true,
-        clientCertificates: [{
-          origin: new URL(process.env.APP_URL!).origin,
-          certPath: path.resolve(process.env.CERT_PATH!),
-          keyPath: path.resolve(process.env.CERT_KEY!),
-          passphrase: process.env.P12_CERT_PASSWORD || ''
-        }],
-        viewport: { width: 1920, height: 1080 },
-      });
-    } else {
-      console.log('🔓 Single-app mode without certificate');
-      context = await browser.newContext({
-        ignoreHTTPSErrors: true,
-        viewport: { width: 1920, height: 1080 },
-      });
-    }
-    
-    context.setDefaultTimeout(60 * 1000);
-    await use(context);
-    await context.close();
-  },
-
-  page: async ({ context }, use) => {
-    // Skip if in multi-app mode
-    if (process.env.ACTIVE_APPS) {
-      // @ts-ignore - provide empty page for multi-app mode
-      await use(null);
-      return;
-    }
-
-    const page = await context.newPage();
-    await use(page);
-  },
-
   requestContext: async ({}, use) => {
     // Skip if in multi-app mode
     if (process.env.ACTIVE_APPS) {

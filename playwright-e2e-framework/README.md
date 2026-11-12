@@ -146,7 +146,7 @@ Field notes:
 
 ### Environment Files
 
-Create `.dev.env`, `.qa.env`, or `.prod.env` at the repo root. Key variables:
+Copy the committed template `.example.env` to `.dev.env`, `.qa.env`, or `.prod.env` at the repo root and fill in the blank secret values (`cp .example.env .dev.env`). Real env files are gitignored — never commit them. Key variables:
 
 ```bash
 # App URLs
@@ -344,7 +344,7 @@ Six reporters run simultaneously:
 | `html` | `reports/index.html` |
 | `json` | `reports/results.json` |
 | `junit` | `reports/junit.xml` |
-| `custom-reporter.ts` | `reports/coverage-report.html` (epic/feature mapping via `feature_mapping.csv`) |
+| `custom-reporter.ts` | `reports/coverage-report.html` (user story → Xray test case coverage via `feature_mapping.csv`) |
 | `step-report-reporter.ts` | `reports/step-report/index.html` (step screenshots, collapsible UI, lightbox) |
 
 > The built-in HTML reporter wipes `reports/` in its `onEnd`. The step report reporter buffers all screenshot data in memory during the run and flushes to `reports/step-report/` only in its own `onEnd`, after the directory is recreated.
@@ -386,7 +386,7 @@ playwright-e2e-framework/
 ├── apps.config.json                # Central app registry
 ├── playwright.config.ts
 ├── run_test.sh                     # Main test runner script
-├── feature_mapping.csv             # Epic/feature mapping for coverage report
+├── feature_mapping.csv             # User story → Xray test case mapping for coverage report
 ├── apps/                           # Sample test applications
 │   ├── docker-compose.yml
 │   ├── loan-webapp/                # Express/TS app (port 3000)

@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "playwright-test": {
+      "command": "npx",
+      "args": [
+        "playwright",
+        "run-test-mcp-server"
+      ],
+      "env": {
+        "PLAYWRIGHT_SLOWMO": "0"
+      }
+    },
+    "github": {
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${env:GITHUB_PERSONAL_ACCESS_TOKEN}"
+      }
+    },
+    "Atlassian-Rovo-MCP": {
+      "url": "https://mcp.atlassian.com/v2/mcp"
+    },
+    "gitlab": {
+      "url": "https://gitlab.com/api/v4/mcp"
+    }
+  }
+}

@@ -94,8 +94,8 @@ upload_to_xray:
     - source scripts/xray-upload-setup.sh
     # Upload results to Xray
     - npm run xray:upload
-  variables:
-    JIRA_BASE_URL: 'https://aosqa.atlassian.net'
+  # JIRA_BASE_URL comes from .${ENV}.env (loaded by utils/xray-upload.ts) or a
+  # GitLab CI/CD variable of the same name, which takes precedence — never hardcode it here.
   only:
     - main
   tags:

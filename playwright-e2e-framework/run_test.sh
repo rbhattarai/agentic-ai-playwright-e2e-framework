@@ -61,10 +61,10 @@ echo ""
 
 if [ -n "$TAG" ]; then
   # Run tests matching the specified tag/grep pattern with controlled workers
-  npx playwright test --grep "$TAG" --workers="${WORKERS}"
+  npx playwright test --grep "$TAG" --grep-invert "@seed" --workers="${WORKERS}"
 else
-  # Run all tests by default
-  npx playwright test --workers="${WORKERS}"
+  # Run all tests by default (excluding the agents' seed test, tests/seed.spec.ts)
+  npx playwright test --grep-invert "@seed" --workers="${WORKERS}"
 fi
 
 # ===========================================================

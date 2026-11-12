@@ -1,87 +1,101 @@
 ---
 name: jira-xray-diagnostics
-description: Diagnoses Jira/Xray MCP connectivity and auth problems in this repo — the "jira MCP tools aren't showing up", "Jira/Xray calls return nothing or fail" class of issue. Walks a fixed sequence of checks (config location, env vars, live REST calls, uv cache) rather than guessing. Use when the jira MCP server is disconnected, jira-story-reader/test-case-creator/test-case-executor fail against Jira/Xray, or a Jira/Xray-touching agent behaves like it has no permissions.
+description: Diagnoses Jira/Xray connectivity and auth problems in this repo — the "Atlassian Rovo MCP tools aren't showing up", "Jira calls return nothing or fail", "Xray upload/steps fail" class of issue, in both Claude Code and GitHub Copilot. Walks a fixed sequence of checks (MCP config in both harnesses, Rovo sign-in, site/cloudId, project access, Xray token) rather than guessing. Use when Atlassian-Rovo-MCP is disconnected or unauthenticated, jira-story-reader/test-case-creator/test-case-executor fail against Jira/Xray, or a Jira/Xray-touching agent behaves like it has no permissions.
 ---
 
-Diagnoses Jira/Xray connectivity issues in this repo, in the order that actually finds
-the problem (derived from real incidents hitting each of these in turn) rather than
-re-deriving it from scratch or guessing at the first plausible cause.
+<!-- Single source of truth for this skill. GitHub Copilot loads it through
+     .github/skills/jira-xray-diagnostics/SKILL.md — keep instructions here harness-neutral. -->
 
-## 1. Is the `jira` MCP server even connected?
+Diagnoses Jira/Xray connectivity in this repo, in the order that actually finds the
+problem rather than guessing at the first plausible cause.
 
-`ToolSearch` for `mcp__jira__jira_get_all_projects`. If it's not found:
+There are two separate integrations — keep them apart:
 
-- Check `.mcp.json` exists **at the repo root** — the Claude Code CLI only reads project
-  MCP servers from there. `.vscode/mcp.json` is a separate file for the VS Code
-  extension's own MCP integration; the CLI never reads it. If someone "moved" the config
-  into `.vscode/`, the CLI's copy is gone — restore `.mcp.json` at root (see
-  `scripts/jira-mcp-server.js` for the expected `{"mcpServers": {"jira": {"command":
-  "node", "args": ["scripts/jira-mcp-server.js"]}}}` shape).
-- If `.mcp.json` is correct but tools still aren't showing up, the session needs a
-  restart — Claude Code loads project MCP servers at session start, not on file change.
+| Integration | Used by | Auth |
+|---|---|---|
+| **Atlassian Rovo MCP** (`Atlassian-Rovo-MCP`, `https://mcp.atlassian.com/v2/mcp`) | `jira-story-reader`, `test-case-creator` (all Jira reads/writes) | OAuth sign-in per harness — no env-file token |
+| **Xray REST** (`{JIRA_BASE_URL}/rest/raven/...`) | `utils/xray-upload.ts`, `scripts/xray.sh`, `test-case-creator` step rows, `test-case-executor` | Bearer `JIRA_XRAY_API_TOKEN` from `.${ENV}.env` |
 
-## 2. Does it connect but return nothing / empty results?
+A working Rovo connection says nothing about the Xray token, and vice versa.
 
-`mcp__jira__jira_get_all_projects` returning `[]`, or `jira_search` with `assignee =
-currentUser()` returning zero results when you know issues exist — **this looks like a
-permissions problem but usually isn't.** Verify the actual identity behind the
-credentials before touching Jira project permissions:
+## 1. Is Atlassian Rovo MCP configured in every harness?
+
+The server must be declared in **each** harness's file, with the same name and URL:
+
+| Harness | File | Top-level key |
+|---|---|---|
+| Claude Code | `.mcp.json` (repo root) | `mcpServers` |
+| GitHub Copilot (VS Code) | `.vscode/mcp.json` | `servers` |
+| Cursor | `.cursor/mcp.json` | `mcpServers` |
+
+```json
+"Atlassian-Rovo-MCP": { "type": "http", "url": "https://mcp.atlassian.com/v2/mcp" }
+```
+
+(Cursor's entry omits `type` — `{ "url": "..." }` is enough.) No harness reads another's file. If an agent works in one harness but not the
+other, diff these two entries first. The server name must stay exactly
+`Atlassian-Rovo-MCP` — agent tool lists reference it (`mcp__Atlassian-Rovo-MCP__*` in
+`.claude/agents/`, `Atlassian-Rovo-MCP/*` in `.github/agents/`).
+
+## 2. Is it signed in?
+
+Rovo lists **no tools** until the harness has completed Atlassian OAuth, so "tools
+missing" usually means "not signed in", not "misconfigured".
+
+- **Claude Code:** run `/mcp`, select **Atlassian-Rovo-MCP**. If it shows
+  "needs authentication", choose **Authenticate** and finish the browser login. Then
+  start a new session (or reload the VS Code window) so the tools load.
+  Check: `ToolSearch` for `"+Atlassian jira"` should list `mcp__Atlassian-Rovo-MCP__getJiraIssue`.
+- **GitHub Copilot:** Command Palette → **MCP: List Servers** → **Atlassian-Rovo-MCP** →
+  **Start** (or **Restart**); approve the sign-in prompt. Check the tools picker in
+  Copilot Chat lists `Atlassian-Rovo-MCP` tools.
+
+Each harness signs in separately — signing in one does not sign in the other.
+
+## 3. Signed in, but calls fail or return nothing?
+
+1. Call `getAccessibleAtlassianResources`.
+   - **Empty list** → the account you signed in with has no access to any Atlassian
+     site, or you didn't grant the site during OAuth consent. Sign out (`/mcp` →
+     Clear authentication, or Copilot's MCP server menu) and sign in again, approving
+     the site.
+   - **Site listed, but not the one in `JIRA_BASE_URL`** → signed in with the wrong
+     Atlassian account. Re-authenticate with the right one.
+   - Check the site's `products` entry for `jira` — `access: "read"` means writes
+     (`test-case-creator` Phase 2) will fail even though reads work.
+2. Call `atlassianUserInfo` to confirm which account is actually behind the session.
+3. `searchJiraIssuesUsingJql` with `project = <JIRA_PROJECT_KEY>` (`maxResults: 1`).
+   Zero results while the site is accessible means a genuine **project permission
+   gap** for that account — this is the case where granting project access helps.
+4. An operation reported as unknown → re-run `discover` with different keywords;
+   never guess an operation name.
+
+## 4. Xray-specific calls failing
+
+`utils/xray-upload.ts`, `scripts/xray.sh`, and Xray step calls in `test-case-creator`
+use **Bearer** auth with `JIRA_XRAY_API_TOKEN` against
+`{JIRA_BASE_URL}/rest/raven/{1.0,2.0}/...`. Rovo can't help here and isn't involved.
 
 ```bash
 set -a; source ".${ENV:-dev}.env"; set +a
-curl -s -u "$JIRA_USER_EMAIL:$JIRA_API_TOKEN" "$JIRA_BASE_URL/rest/api/3/myself"
+curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $JIRA_XRAY_API_TOKEN" \
+  "$JIRA_BASE_URL/rest/raven/1.0/api/settings/teststatuses"
 ```
 
-- **`"Client must be authenticated to access this resource."`** → the token is flat out
-  invalid for this endpoint, not under-permissioned. The most common cause in this repo:
-  `JIRA_XRAY_API_TOKEN` was used where a real Jira API token belongs.
-  `JIRA_XRAY_API_TOKEN` is scoped to Xray's own import/raven endpoints (used via Bearer
-  auth in `utils/xray-upload.ts`) — it does not authenticate as a user against the
-  standard Jira REST API's Basic auth. The fix is a **separate** `JIRA_API_TOKEN`,
-  generated at `id.atlassian.com/manage-profile/security/api-tokens` under the actual
-  Jira user account, added to `.dev.env`/`.qa.env`, and used for `JIRA_USERNAME`/
-  `JIRA_API_TOKEN` in `scripts/jira-mcp-server.js`.
-- **Returns a real user JSON** (`displayName`, `accountId`, etc.) → credentials are
-  valid. Now check project visibility specifically:
-  ```bash
-  curl -s -u "$JIRA_USER_EMAIL:$JIRA_API_TOKEN" "$JIRA_BASE_URL/rest/api/3/project/search"
-  ```
-  Empty `values` here (with valid `/myself`) means a genuine permissions gap on that
-  project — this is the case where actually granting project access helps.
-- **Whichever env var you just fixed, the running `jira` MCP subprocess won't pick it
-  up** — it's a long-lived process spawned once with credentials baked into its launch
-  command (`scripts/jira-mcp-server.js` passes them as CLI flags to `uvx
-  mcp-atlassian`). A env-file edit requires a Claude Code restart to take effect, not
-  just re-running a tool call.
-
-## 3. `uvx mcp-atlassian` fails to install
-
-```
-error: Failed to install: ... Caused by: failed to hardlink file ... (os error 396)
-```
-
-This repo lives under OneDrive-synced paths on Windows; `uv`'s cache can't hardlink
-across that filesystem boundary. Fix: `UV_LINK_MODE=copy` (already set in
-`scripts/jira-mcp-server.js`'s spawn env — if this error reappears, check that env var
-is still being passed through, e.g. after an edit to that script).
-
-## 4. Xray-specific (not general Jira) calls failing
-
-`utils/xray-upload.ts` and any Xray step/test-management REST calls (see
-`test-case-creator`) use **Bearer** auth with `JIRA_XRAY_API_TOKEN` against
-`{JIRA_BASE_URL}/rest/raven/{1.0,2.0}/...` — a completely different auth scheme and API
-surface from the Basic-auth `/rest/api/3/...` calls above. A working `/rest/api/3/myself`
-does not imply the raven endpoints work, and vice versa. If a raven endpoint 404s, the
-instance may be running Xray Cloud's GraphQL API instead of the REST compatibility
-layer — that's a different integration, not a credentials problem; don't keep retrying
-different tokens against it.
+- **401/403** → token missing, expired, or not an Xray token. Regenerate it and update
+  `.dev.env` / `.qa.env` (never paste the token into a command or transcript).
+- **404** → the instance may be running Xray Cloud's GraphQL API
+  (`xray.cloud.getxray.app`) rather than the raven REST compatibility layer. That's a
+  different integration, not a credentials problem — don't keep retrying other tokens.
 
 ## Quick reference
 
 | Symptom | Likely cause | Check |
 |---|---|---|
-| `jira` tools not in ToolSearch | Wrong/missing `.mcp.json` at root, or stale session | §1 |
-| Tools respond but return `[]`/empty | Wrong token type (Xray token used for Basic auth) | §2, `/myself` |
-| `/myself` returns a real user but `/project/search` is empty | Genuine project permission gap | §2 |
-| `uvx mcp-atlassian` install fails with os error 396 | OneDrive hardlink issue | §3 |
-| `/rest/raven/...` calls 404 | Xray Cloud GraphQL vs REST API mismatch | §4 |
+| Works in Claude Code, not Copilot (or vice versa) | Entry missing/different in `.mcp.json` vs `.vscode/mcp.json`, or only one harness signed in | §1, §2 |
+| No `Atlassian-Rovo-MCP` tools at all | Not signed in, or session started before sign-in | §2 |
+| `getAccessibleAtlassianResources` empty / wrong site | Wrong account, or site not granted at consent | §3 |
+| Site OK but project search empty | Genuine project permission gap | §3 |
+| Reads work, creates/transitions fail | Jira access is read-only for that account | §3 |
+| `/rest/raven/...` 401/403 | Bad/expired `JIRA_XRAY_API_TOKEN` | §4 |
+| `/rest/raven/...` 404 | Xray Cloud GraphQL vs raven REST mismatch | §4 |

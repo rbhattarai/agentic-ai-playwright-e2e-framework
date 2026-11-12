@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(npm install:*)",
+      "Bash(command -v docker)",
+      "Bash(docker --version)",
+      "Bash(command -v python3 python)",
+      "mcp__playwright-test__browser_navigate",
+      "mcp__Atlassian-Rovo-MCP__getAccessibleAtlassianResources",
+      "mcp__Atlassian-Rovo-MCP__atlassianUserInfo",
+      "mcp__Atlassian-Rovo-MCP__getJiraIssue",
+      "mcp__Atlassian-Rovo-MCP__listJiraIssueComments",
+      "mcp__Atlassian-Rovo-MCP__searchJiraIssuesUsingJql",
+      "mcp__Atlassian-Rovo-MCP__discover",
+      "mcp__Atlassian-Rovo-MCP__executeRead"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "Atlassian-Rovo-MCP",
+    "playwright-test",
+    "github",
+    "gitlab"
+  ],
+  "agent": "test-orchestrator"
+}

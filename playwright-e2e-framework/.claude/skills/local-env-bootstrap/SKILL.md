@@ -69,8 +69,11 @@ openssl x509 -in certs/cert.pem -noout -dates   # check expiry, once converted
 
 ## 5. Env file
 
-Copy the right one for the target environment (`.dev.env`, `.qa.env`, ...) — see
-`CLAUDE.md`'s Environment Setup table for the required variables. Missing `APP_URL` /
+Real env files are gitignored; only the template `.example.env` is committed. Create one
+for the target environment by copying it (`cp .example.env .dev.env`, `.qa.env`, ...)
+and filling in the blank secret values (ask the user for them — never invent or commit
+them) — see
+`AGENTS.md`'s Environment Setup table for the required variables. Missing `APP_URL` /
 `LOAN_APP_URL` / `LENDING_APP_URL` is the most common first-run failure; `playwright.config.ts`
 falls back from `.${ENV}.env` to `.env` with a console warning if the expected file isn't
 found — check for that warning in test output if things look unconfigured.

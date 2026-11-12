@@ -9,30 +9,29 @@ import type {
 import * as fs from 'fs';
 import * as path from 'path';
 
-interface FeatureMapping {
-  user_story: string;
-  feature: string;
-  jira_key: string;
+// One row of feature_mapping.csv: user_story_key,issue_summary,test_case_keys
+interface StoryMapping {
+  user_story_key: string; // Jira user story key, e.g. SCRUM-5
+  issue_summary: string; // Jira issue summary
+  test_case_keys: string[]; // Xray test case keys automating the story
 }
 
-interface UserStoryCoverage {
-  features: {
-    feature: string;
-    jira: string;
-    ran: boolean;
-  }[];
-  covered: boolean;
-  jira: string;
+interface StoryCoverage {
+  summary: string;
+  testCases: string[];
+  testCasesRun: string[]; // test case keys whose tests ran in this run
+  covered: boolean; // a test tagged with the story key or one of its test case keys ran
 }
 
 class CoverageReporter implements Reporter {
   private testResults: Map<string, { status: string; error?: string }> = new Map();
-  private featureMapping: FeatureMapping[] = [];
+  private featureMapping: StoryMapping[] = [];
   private totalTests = 0;
   private passedTests = 0;
   private failedTests = 0;
   private skippedTests = 0;
-  private ranFeatures: Set<string> = new Set();
+  private ranStories: Set<string> = new Set(); // user story keys covered by this run
+  private ranKeys: Set<string> = new Set(); // every Jira key seen on a test that ran
 
   onBegin(config: FullConfig, suite: Suite) {
     console.log(`Starting test run with ${suite.allTests().length} tests`);
@@ -87,54 +86,57 @@ class CoverageReporter implements Reporter {
     this.featureMapping = this.parseCSV(csv);
   }
 
-  private parseCSV(csv: string): FeatureMapping[] {
+  private parseCSV(csv: string): StoryMapping[] {
     const lines = csv.split(/\r?\n/).filter(Boolean);
     const headers = lines[0].split(',').map((h) => h.trim());
-    const rows = lines.slice(1).map((l) => {
-      const parts = l.split(',');
-      const obj: any = {};
-      headers.forEach((h, i) => (obj[h] = (parts[i] || '').trim()));
-      return obj as FeatureMapping;
-    });
-    return rows;
+    return lines
+      .slice(1)
+      .map((l) => {
+        const parts = l.split(',');
+        const obj: Record<string, string> = {};
+        headers.forEach((h, i) => (obj[h] = (parts[i] || '').trim()));
+        return {
+          user_story_key: (obj.user_story_key || '').toUpperCase(),
+          issue_summary: obj.issue_summary || '',
+          test_case_keys: (obj.test_case_keys || '').split(';').map((k) => k.trim().toUpperCase()).filter(Boolean),
+        };
+      })
+      .filter((r) => r.user_story_key);
   }
 
   private extractFeatureFromTest(test: TestCase) {
-    const testTitle = test.title;
+    // Jira keys from the test's tags (includes tags inherited from test.describe titles and
+    // { tag } options) plus its full title path, as a fallback for older Playwright versions.
+    const fromTags = (test.tags || []).map((t) => t.replace(/^@/, ''));
+    const fromTitles = test.titlePath().join(' ').match(/\b[A-Z][A-Z0-9]+-\d+\b/g) || [];
+    const jiraKeys = Array.from(new Set([...fromTags, ...fromTitles].map((k) => k.toUpperCase())))
+      .filter((k) => /^[A-Z][A-Z0-9]+-\d+$/.test(k));
 
-    //Extract all JIRA keys from the test title using regex
-    const jiraKeys = testTitle.match(/\b[A-Z]+-\d+\b/g) || [];
+    jiraKeys.forEach((k) => this.ranKeys.add(k));
 
+    let matched = false;
     for (const jiraKey of jiraKeys) {
-      // Find matching feature in the mapping for this JIRA key
-      const matchedFeature = this.featureMapping.find((fm) => fm.jira_key?.toLowerCase() === jiraKey.toLowerCase());
-      if (matchedFeature) {
-        this.ranFeatures.add(matchedFeature.feature);
+      // A key matches a row as its user story key or as one of its Xray test case keys
+      const story = this.featureMapping.find(
+        (r) => r.user_story_key === jiraKey || r.test_case_keys.includes(jiraKey)
+      );
+      if (story) {
+        this.ranStories.add(story.user_story_key);
+        matched = true;
       }
     }
 
-    //If no JIRA key matched, fall back to original method
-    if(this.ranFeatures.size === 0) {
-      // Extract feature from test title or parent suite
-      let featureName = test.parent?.title || test.title;
-      
-      // If the test has a parent suite, use that as the feature
-      if (test.parent && test.parent.title) {
-        featureName = test.parent.title;
-      }
-
-      // Check if feature name matches any in feature_mapping.csv
-      const matchedFeature = this.featureMapping.find(
-        (fm) => fm.feature.toLowerCase().includes(featureName.toLowerCase()) ||
-                featureName.toLowerCase().includes(fm.feature.toLowerCase())
-      );
-
-      if (matchedFeature) {
-        this.ranFeatures.add(matchedFeature.feature);
-      } else if (featureName) {
-        // If no exact match, try to use the feature name as-is
-        this.ranFeatures.add(featureName);
-      }
+    // If no Jira key matched for this test, fall back to matching its describe title
+    // against the stories' issue summaries.
+    if (!matched) {
+      const suiteTitle = (test.parent?.title || test.title).replace(/@\S+/g, '').trim().toLowerCase();
+      const story = suiteTitle
+        ? this.featureMapping.find((r) => {
+            const summary = r.issue_summary.toLowerCase();
+            return summary && (summary.includes(suiteTitle) || suiteTitle.includes(summary));
+          })
+        : undefined;
+      if (story) this.ranStories.add(story.user_story_key);
     }
   }
 
@@ -148,23 +150,15 @@ class CoverageReporter implements Reporter {
     console.log('📈 Test Automation Coverage Report');
     console.log('='.repeat(80));
 
-    // Build user story coverage data
-    const userStories: Record<string, UserStoryCoverage> = {};
+    // Build user story coverage data (one row per user story)
+    const userStories: Record<string, StoryCoverage> = {};
     for (const row of this.featureMapping) {
-      const us = row.user_story || 'UNKNOWN';
-      const jira = row.jira_key || '';
-      const feat = row.feature;
-
-      if (!userStories[us]) {
-        userStories[us] = { features: [], covered: false, jira: jira };
-      }
-
-      const ran = this.ranFeatures.has(feat);
-      userStories[us].features.push({ feature: feat, jira: jira, ran: ran });
-
-      if (jira && ran) {
-        userStories[us].covered = true;
-      }
+      userStories[row.user_story_key] = {
+        summary: row.issue_summary,
+        testCases: row.test_case_keys,
+        testCasesRun: row.test_case_keys.filter((k) => this.ranKeys.has(k)),
+        covered: this.ranStories.has(row.user_story_key),
+      };
     }
 
     // Calculate coverage percentage
@@ -178,12 +172,11 @@ class CoverageReporter implements Reporter {
     console.log('User Story Coverage:');
     console.log('-'.repeat(80));
     console.table(
-      Object.entries(userStories).map(([us, data]) => ({
-        'User Story': us,
-        Features: data.features.map(f => f.feature).join(', '),
-        'Features Count': data.features.length,
-        'Features Tested': data.features.filter((f) => f.ran).length,
-        'JIRA Keys': Array.from(new Set(data.features.map((f) => f.jira).filter(Boolean))).join(', ') || '-',
+      Object.entries(userStories).map(([key, data]) => ({
+        'User Story': key,
+        Summary: data.summary,
+        'Test Cases': data.testCases.join(', ') || '-',
+        'Test Cases Run': `${data.testCasesRun.length} / ${data.testCases.length}`,
         Covered: data.covered ? '✅' : '❌',
       }))
     );
@@ -193,7 +186,7 @@ class CoverageReporter implements Reporter {
   }
 
   private async generateHTMLCoverageReport(
-    userStories: Record<string, UserStoryCoverage>,
+    userStories: Record<string, StoryCoverage>,
     percent: number,
     coveredCount: number,
     total: number
@@ -205,31 +198,29 @@ class CoverageReporter implements Reporter {
 
     const coverageHtmlPath = path.join(htmlDir, 'coverage-report.html');
     const uncoveredCount = total - coveredCount;
-    const totalFeatures = Object.values(userStories).reduce((s, u) => s + u.features.length, 0);
-    const ranFeatures   = Object.values(userStories).reduce((s, u) => s + u.features.filter(f => f.ran).length, 0);
+    const totalTestCases = Object.values(userStories).reduce((s, u) => s + u.testCases.length, 0);
+    const ranTestCases   = Object.values(userStories).reduce((s, u) => s + u.testCasesRun.length, 0);
     const barColor = percent >= 80 ? '#10b981' : percent >= 50 ? '#f59e0b' : '#ef4444';
     const env = process.env.ENV || process.env.NODE_ENV || 'dev';
     const timestamp = new Date().toLocaleString();
 
-    const usRows = Object.entries(userStories).map(([us, data]) => {
-      const jiraKeys = Array.from(new Set(data.features.map(f => f.jira).filter(Boolean)));
-      const featBadges = data.features.map(f => {
-        const cls = f.ran ? 'feat-ran' : 'feat-not-ran';
-        const icon = f.ran ? '✓' : '○';
-        const jira = f.jira ? `<span class="jira-key">${f.jira}</span>` : '';
-        return `<span class="feat-badge ${cls}">${icon} ${f.feature}${jira ? ' ' + jira : ''}</span>`;
-      }).join('');
-      const jiraBadges = jiraKeys.map(k => `<span class="jira-pill">${k}</span>`).join(' ') || '<span class="text-muted">—</span>';
+    const usRows = Object.entries(userStories).map(([key, data]) => {
+      const summaryBadge = `<span class="feat-badge ${data.covered ? 'feat-ran' : 'feat-not-ran'}">${data.covered ? '✓' : '○'} ${data.summary || '—'}</span>`;
+      const tcBadges = data.testCases
+        .map((k) => {
+          const ran = data.testCasesRun.includes(k);
+          return `<span class="feat-badge ${ran ? 'feat-ran' : 'feat-not-ran'}" title="Xray test case${ran ? ' — ran' : ' — not run'}">${ran ? '✓' : '○'} ${k}</span>`;
+        })
+        .join('') || '<span class="text-muted">—</span>';
       const statusCls  = data.covered ? 'status-covered' : 'status-missing';
       const statusTxt  = data.covered ? '✔ Covered' : '✘ Not covered';
-      const testedCount = data.features.filter(f => f.ran).length;
 
       return `
         <tr>
-          <td><span class="us-name">${us}</span></td>
-          <td><div class="feat-list">${featBadges}</div></td>
-          <td class="text-center"><strong>${testedCount}</strong> / ${data.features.length}</td>
-          <td>${jiraBadges}</td>
+          <td><span class="us-name">${key}</span></td>
+          <td><div class="feat-list">${summaryBadge}</div></td>
+          <td class="text-center"><strong>${data.testCasesRun.length}</strong> / ${data.testCases.length}</td>
+          <td><div class="feat-list">${tcBadges}</div></td>
           <td><span class="status-badge ${statusCls}">${statusTxt}</span></td>
         </tr>`;
     }).join('');
@@ -306,7 +297,7 @@ class CoverageReporter implements Reporter {
       <div class="stat-card"><div class="stat-icon green">✅</div><div><div class="stat-value" style="color:#059669">${this.passedTests}</div><div class="stat-label">Passed</div></div></div>
       <div class="stat-card"><div class="stat-icon red">❌</div><div><div class="stat-value" style="color:#dc2626">${this.failedTests}</div><div class="stat-label">Failed</div></div></div>
       <div class="stat-card"><div class="stat-icon amber">⏭</div><div><div class="stat-value" style="color:#d97706">${this.skippedTests}</div><div class="stat-label">Skipped</div></div></div>
-      <div class="stat-card"><div class="stat-icon sky">🎯</div><div><div class="stat-value" style="color:#0284c7">${ranFeatures} / ${totalFeatures}</div><div class="stat-label">Features Run</div></div></div>
+      <div class="stat-card"><div class="stat-icon sky">🎯</div><div><div class="stat-value" style="color:#0284c7">${ranTestCases} / ${totalTestCases}</div><div class="stat-label">Test Cases Run</div></div></div>
     </div>
     <div class="coverage-bar-wrap">
       <div class="coverage-bar-header">
@@ -329,9 +320,9 @@ class CoverageReporter implements Reporter {
         <thead>
           <tr>
             <th style="width:140px">User Story</th>
-            <th>Features</th>
-            <th class="tc" style="width:110px">Tested</th>
-            <th style="width:160px">JIRA Keys</th>
+            <th>Issue Summary</th>
+            <th class="tc" style="width:110px">Test Cases Run</th>
+            <th style="width:220px">Test Cases</th>
             <th style="width:140px">Status</th>
           </tr>
         </thead>

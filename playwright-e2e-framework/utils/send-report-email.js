@@ -37,7 +37,8 @@ function extractFeatures(spec) {
     console.warn('Invalid spec or missing tags:', spec);
     return [];
   }
-  return spec.tags.filter(tag => tag.startsWith('SCRUM-'));
+  // Any Jira key (story or Xray test case) — not tied to one project prefix
+  return spec.tags.filter(tag => /^[A-Z][A-Z0-9]+-\d+$/.test(tag));
 }
 
 function processSpec(spec, ranFeatures, testCounts) {
@@ -136,32 +137,29 @@ async function main() {
       if(fs.existsSync('feature_mapping.csv')) {
         try {
           const csv = fs.readFileSync('feature_mapping.csv', 'utf8');
-          const featureMapping = parseCSV(csv);
-          const epics = {};
-          for (const row of featureMapping) {
-            const epic = row.epic || 'UNKNOWN';
-            const jira = row.jira_key || '';
-            const feat = row.feature;
-            if (!epics[epic]) {
-              epics[epic] = { features: [], covered: false, jira: jira };
-            }
+          // feature_mapping.csv: user_story_key,issue_summary,test_case_keys (one row per user story)
+          const stories = parseCSV(csv)
+            .filter(row => row.user_story_key)
+            .map(row => {
+              const testCases = (row.test_case_keys || '').split(';').map(k => k.trim()).filter(Boolean);
+              const testCasesRun = testCases.filter(k => ranFeatures.has(k));
+              return {
+                key: row.user_story_key,
+                summary: row.issue_summary || '',
+                testCases,
+                testCasesRun,
+                covered: ranFeatures.has(row.user_story_key) || testCasesRun.length > 0,
+              };
+            });
 
-            const ran = ranFeatures.has(jira);
-
-            epics[epic].features.push({ feature: feat, jira: jira, ran: ran });
-            if (jira && ran) {
-              epics[epic].covered = true;
-            }
-          }
-
-          const total = Object.keys(epics).length;
-          const coveredCount = Object.values(epics).filter(e => e.covered).length;
+          const total = stories.length;
+          const coveredCount = stories.filter(s => s.covered).length;
           const percent = total === 0 ? 0 : Math.round((coveredCount / total) * 100);
-          coverageSummary += `<p><strong>Test Coverage:</strong> ${percent}% (${coveredCount}/${total} epics covered)</p>`;
+          coverageSummary += `<p><strong>Test Coverage:</strong> ${percent}% (${coveredCount}/${total} user stories covered)</p>`;
           coverageSummary += '<ul>';
-          for (const [epic, data] of Object.entries(epics)) {
-            const jiraKeys = Array.from(new Set(data.features.map(f => f.jira).filter(Boolean))).join(', ') || '-';
-            coverageSummary += `<li><strong>${epic}</strong> [${jiraKeys}] - ${data.covered ? '✅ Covered' : '❌ Not Covered'}</li>`;
+          for (const s of stories) {
+            const tcs = s.testCases.length ? ` — test cases run ${s.testCasesRun.length}/${s.testCases.length} [${s.testCases.join(', ')}]` : '';
+            coverageSummary += `<li><strong>${s.key}</strong> ${s.summary}${tcs} - ${s.covered ? '✅ Covered' : '❌ Not Covered'}</li>`;
           }
           coverageSummary += '</ul>';
           } catch (err) {

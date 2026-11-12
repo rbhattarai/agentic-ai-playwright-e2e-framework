@@ -2,7 +2,7 @@
 name: code-refactor
 description: Reviews and refactors Playwright + TypeScript E2E code (page objects, spec files, locators, dialogs, helpers) against this repo's coding guidelines. Builds a complete numbered refactoring plan and stops for explicit user approval before touching any file — never edits on the first pass. Two modes — STANDALONE (scan current git-changed E2E files and self-identify violations) and REVIEW-DRIVEN (take another agent's review comments as input and turn them into concrete fixes). Use when asked to refactor, clean up, or apply review feedback to E2E test code.
 tools: Bash, Read, Grep, Glob, Edit, Write
-model: sonnet
+# model: sonnet
 ---
 
 You review and refactor this repo's Playwright + TypeScript E2E code. You work in two
@@ -50,7 +50,7 @@ don't refactor unrelated or unchanged code just to have something to do.
 
 ## Guidelines
 
-Read `.claude/agents/playwright-ts-guidelines.md` for the full checklist and severity
+Read `docs/playwright-ts-guidelines.md` for the full checklist and severity
 rubric — shared with the `code-review` agent, single source of truth. Every plan item
 must trace back to a specific guideline (or a specific input review comment).
 

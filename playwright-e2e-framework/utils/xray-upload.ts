@@ -4,6 +4,17 @@ import axios from 'axios';
 import https from 'https';
 import FormData from 'form-data';
 import { execSync } from 'child_process';
+import dotenv from 'dotenv';
+
+// Load the environment-specific env file (same convention as playwright.config.ts).
+// Variables already set in the process (e.g. GitLab CI/CD variables) take precedence.
+const envFile = `.${process.env.ENV || 'dev'}.env`;
+const envPath = path.resolve(process.cwd(), envFile);
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+} else {
+  dotenv.config(); // fallback to .env
+}
 
 const JIRA_BASE_URL = process.env.JIRA_BASE_URL || '';
 const XRAY_TOKEN = process.env.JIRA_XRAY_API_TOKEN || '';
