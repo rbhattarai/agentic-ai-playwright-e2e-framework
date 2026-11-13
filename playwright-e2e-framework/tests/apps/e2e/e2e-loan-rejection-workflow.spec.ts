@@ -32,7 +32,7 @@ test.describe('SCRUM-4 Loan rejection flow @SCRUM-4 @MultiApp', () => {
     }
   });
 
-  test('Create, assign, reject, verify, and clean up a loan and lender', async ({ apps }) => {
+  test('Create, assign, reject, verify, and clean up a loan and lender', { tag: ['@SCRUM-8'] }, async ({ apps }) => {
     if (!apps['loan-app'] || !apps['lending-app']) {
       test.skip(true, 'Both loan-app and lending-app must be configured');
       return;

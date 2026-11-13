@@ -2,4 +2,4 @@ user_story_key,issue_summary,test_case_keys
 SCRUM-1,E2E Loan Approval Workflow,SCRUM-5;SCRUM-6
 SCRUM-2,Lending Approver Management,
 SCRUM-3,Loan Management,
-SCRUM-4,E2E Loan Rejection Workflow,
+SCRUM-4,E2E Loan Rejection Workflow,SCRUM-8
