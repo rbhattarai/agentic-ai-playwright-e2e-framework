@@ -1,7 +1,7 @@
 ---
 name: create-pull-request
 description: Creates a feature branch and raises a pull request (GitHub) or merge request (GitLab) for E2E test changes, or pushes follow-up commits to an already-open PR/MR after review feedback. Detects the git host from the remote and uses its MCP server first (GitHub MCP / GitLab MCP), falling back to the host CLI (gh / glab), then to plain git. Builds a plan (host, branch name, files, commit message, PR/MR title/body) and stops for explicit user approval before any git/host mutation. Use when asked to raise a PR or MR, create a branch, or push review-feedback fixes to an open PR/MR for E2E test work.
-tools: Bash, Read, Grep, Glob, ToolSearch, mcp__github__get_me, mcp__github__list_pull_requests, mcp__github__pull_request_read, mcp__github__create_pull_request, mcp__gitlab__get_project, mcp__gitlab__list_merge_requests, mcp__gitlab__get_merge_request, mcp__gitlab__save_merge_request
+tools: Bash, Read, Grep, Glob, ToolSearch, mcp__github__list_pull_requests, mcp__github__pull_request_read, mcp__github__create_pull_request, mcp__gitlab__get_project, mcp__gitlab__list_merge_requests, mcp__gitlab__get_merge_request, mcp__gitlab__save_merge_request
 # model: sonnet
 ---
 
@@ -43,14 +43,19 @@ another remote, e.g. when a repo is mirrored to both hosts):
 | `gitlab.com` or another `gitlab` host | GitLab | full project path incl. subgroups, e.g. `group/sub/repo` (strip `.git`) |
 | anything else / unclear | — | ask the user which host it is; don't guess |
 
-**Integration** — try each tier in order and use the first that passes its read-only
-probe. In Claude Code, MCP tools may be deferred: load them first with `ToolSearch`
-(`+github pull_request` / `+gitlab merge_request`). A tier is unavailable if its tools
-don't exist in this session, aren't authenticated, or the probe errors.
+**Integration** — try each tier in order. For GitHub, use the GitHub MCP tools before
+trying `gh` or the git-only fallback. Probe MCP read access with `list_pull_requests`
+using the detected owner/repo; that call also checks for an existing PR. In Claude Code,
+MCP tools may be deferred: load them first with `ToolSearch`
+(`+github pull_request` / `+gitlab merge_request`). A tier is unavailable for an
+operation if its required tool does not exist in this session, is not authenticated, or
+the call errors. A successful read probe does not establish that the PR-creation tool is
+available; at apply time, use `create_pull_request` if exposed, otherwise continue to the
+next tier. For GitLab, probe `get_project` with the project path.
 
 | Tier | GitHub | GitLab |
 |---|---|---|
-| 1. MCP (preferred) | `github` server — probe: `get_me` | `gitlab` server — probe: `get_project` with the project path |
+| 1. MCP (preferred) | `github` server — probe: `list_pull_requests`; create with `create_pull_request` when available | `gitlab` server — probe: `get_project` with the project path |
 | 2. CLI fallback | `gh` — probe: `gh auth status --hostname <host>` | `glab` — probe: `glab auth status --hostname <host>` |
 | 3. git-only fallback | push, then give the user the compare URL `https://<host>/<owner>/<repo>/compare/<base>...<branch>?expand=1` | push with GitLab push options to open the MR (see §4) |
 
@@ -127,10 +132,11 @@ GitLab `add_commit`) — that bypasses local hooks and leaves the local branch o
 Don't set extra options the plan didn't include (reviewers, labels, squash, delete source
 branch, draft, …).
 
-**If the selected tier fails mid-apply** (auth expired, tool error, MCP server
-disconnected): first check whether the PR/MR was created anyway (§2 existing check) so you
-never open a duplicate; if not, move to the next tier in the approved fallback chain and
-say so in the report. Don't retry the same failing call in a loop.
+**If the selected tier fails mid-apply** (auth expired, tool unavailable, MCP server
+disconnected): first check whether the PR/MR was created anyway (§2 existing check) using
+the best available read tier so you never open a duplicate; if not, move to the next tier
+in the approved fallback chain and say so in the report. Don't retry the same failing call
+in a loop.
 
 **Report:** the PR/MR URL (and number `#N` / IID `!N`) plus which tier created it. For a
 follow-up: the commit pushed and a reminder that it lands on the existing PR/MR

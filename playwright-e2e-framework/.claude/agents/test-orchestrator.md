@@ -121,14 +121,17 @@ Agents not listed (`code-review`, `code-refactor`, `test-case-executor`) need no
    doesn't stop halfway. Harnesses where you can't see the sub-agent's tools (e.g.
    GitHub Copilot, where your own tool list has no MCP servers) skip this step and rely
    on step 2.
-2. **Guard clause in every delegation prompt.** Start the prompt to each gated sub-agent
-   with:
-   > Before doing anything else, confirm you have the `<server>` MCP tools (e.g.
-   > `<probe tool>`). If you don't, do no other work and reply with exactly one line:
-   > `MCP-UNAVAILABLE: <server> — missing: <tool names>`.
-3. **On a missing server** (failed pre-check, an `MCP-UNAVAILABLE:` reply, or any reply
-   saying it couldn't access its MCP tools), don't retry the sub-agent and never do its
-   work yourself. Diagnose, then stop:
+2. **Guard clause in every delegation prompt.** Do not ask a sub-agent to infer tool
+   availability from its visible tool-name list: Copilot may grant MCP tools as
+   `<server>/*`. Tell it to use the named probe as the first required task operation,
+   rather than performing a separate availability check. If that invocation fails
+   specifically because the server/tool is unavailable, it must stop and reply with
+   exactly one line: `MCP-UNAVAILABLE: <server> — missing: <tool names>`. Do not classify
+   authentication or permission errors as missing tools; report those errors for
+   diagnosis instead.
+3. **On a confirmed missing server** (failed pre-check or an actual tool invocation
+   rejected because the tool/server is unavailable), don't retry the sub-agent and never
+   do its work yourself. Diagnose, then stop:
    - `playwright-test`: run `node scripts/check-playwright-mcp.cjs <sub-agent>`. It starts
      the server exactly as the MCP configs do and checks that it serves every tool in the
      agent's frontmatter.
@@ -136,7 +139,9 @@ Agents not listed (`code-review`, `code-refactor`, `test-case-executor`) need no
        Report its message and run **`local-env-bootstrap`**.
      - `"ok": true` → the server works, but the harness didn't give it to the sub-agent.
        Report the harness fix below.
-   - `Atlassian-Rovo-MCP`: run **`jira-xray-diagnostics`** and report its findings.
+   - `Atlassian-Rovo-MCP`: run **`jira-xray-diagnostics`** and report its findings for
+     missing-tool, authentication, or connectivity errors. An unverified sub-agent claim
+     that it cannot see a tool is not by itself evidence that the server is unavailable.
 4. **Harness fix to report** (only for the user's harness):
    - **GitHub Copilot (VS Code):** Command Palette → *MCP: List Servers* → `<server>` →
      *Start* (accept the trust prompt for `playwright-test`, which runs locally through

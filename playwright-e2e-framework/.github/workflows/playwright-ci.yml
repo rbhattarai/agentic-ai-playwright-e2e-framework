@@ -1,0 +1,138 @@
+name: Playwright CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        type: choice
+        options:
+          - dev
+          - qa
+          - uat
+          - prod
+        default: dev
+      tag:
+        description: Playwright test tag or grep expression
+        required: false
+        type: string
+        default: '@SmokeTest'
+      apps:
+        description: Comma-separated app keys (leave blank to test all configured apps)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  playwright:
+    name: Validate, test, and report
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    env:
+      CI: 'true'
+      ENV: ${{ github.event.inputs.environment || 'dev' }}
+      TAG: ${{ github.event.inputs.tag || vars.TAG || '@SmokeTest' }}
+      APPS: ${{ github.event.inputs.apps || vars.APPS || '' }}
+      PLAYWRIGHT_HEADLESS: 'true'
+      APP_NAME: ${{ vars.APP_NAME || 'Playwright E2E Framework' }}
+      APP_URL: ${{ vars.APP_URL || vars.LOAN_APP_URL }}
+      LOAN_APP_URL: ${{ vars.LOAN_APP_URL }}
+      LENDING_APP_URL: ${{ vars.LENDING_APP_URL }}
+      LOAN_CERT_P12_BASE64: ${{ secrets.LOAN_CERT_P12_BASE64 }}
+      LENDING_CERT_P12_BASE64: ${{ secrets.LENDING_CERT_P12_BASE64 }}
+      CERT_P12_BASE64: ${{ secrets.CERT_P12_BASE64 }}
+      SMTP_HOST: ${{ vars.SMTP_HOST }}
+      SMTP_PORT: ${{ vars.SMTP_PORT }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASS: ${{ secrets.SMTP_PASS }}
+      REPORT_TO: ${{ vars.REPORT_TO }}
+      REPORT_FROM: ${{ vars.REPORT_FROM }}
+      JIRA_BASE_URL: ${{ vars.JIRA_BASE_URL }}
+      JIRA_USER_EMAIL: ${{ vars.JIRA_USER_EMAIL }}
+      JIRA_XRAY_API_TOKEN: ${{ secrets.JIRA_XRAY_API_TOKEN }}
+      JIRA_PROJECT_KEY: ${{ vars.JIRA_PROJECT_KEY }}
+      XRAY_CA_PEM_BASE64: ${{ secrets.XRAY_CA_PEM_BASE64 }}
+      TEST_EXECUTION_SUMMARY: ${{ vars.TEST_EXECUTION_SUMMARY }}
+      TEST_EXECUTION_DESCRIPTION: ${{ vars.TEST_EXECUTION_DESCRIPTION }}
+      DB_HOST: ${{ vars.DB_HOST }}
+      DB_PORT: ${{ vars.DB_PORT }}
+      DB_USER: ${{ vars.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      DB_NAME: ${{ vars.DB_NAME }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Prepare environment file
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
+          const envFile = `.${process.env.ENV}.env`;
+          const contents = [
+            `APP_URL=${quote(process.env.APP_URL || '')}`,
+            `APP_NAME=${quote(process.env.APP_NAME || '')}`,
+          ].join('\n') + '\n';
+
+          fs.writeFileSync(envFile, contents, { mode: 0o600 });
+          NODE
+
+      - name: Validate environment
+        run: bash ./scripts/validate-env.sh ".${ENV}.env"
+
+      - name: Run Playwright tests
+        id: run_tests
+        run: |
+          mkdir -p reports
+          if [ -n "$APPS" ]; then
+            bash ./run_test.sh -apps="$APPS" -env="$ENV" -tags="$TAG"
+          else
+            bash ./run_test.sh -env="$ENV" -tags="$TAG"
+          fi
+
+      - name: Upload Xray results
+        if: always() && github.ref == 'refs/heads/main' && steps.run_tests.outcome != 'cancelled'
+        continue-on-error: true
+        run: |
+          source scripts/xray-upload-setup.sh
+          npm run xray:upload
+
+      - name: Send test report email
+        if: always() && steps.run_tests.outcome != 'cancelled'
+        continue-on-error: true
+        env:
+          CI_PIPELINE_ID: ${{ github.run_id }}
+          CI_COMMIT_SHA: ${{ github.sha }}
+          CI_JOB_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CI_PIPELINE_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CI_PROJECT_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: npm run send-report
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-reports
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 7

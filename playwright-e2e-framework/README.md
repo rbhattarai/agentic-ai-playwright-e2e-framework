@@ -355,6 +355,39 @@ Six reporters run simultaneously:
 
 `.gitlab-ci.yml` defines stages: **validate → test → xray → notify**.
 
+### GitHub Actions
+
+`.github/workflows/playwright-ci.yml` runs the same stages on pushes and pull requests,
+and can also be started manually from the Actions tab. Manual runs let you choose the
+target environment, test tag, and optional app list. Xray uploads run only on `main`;
+reports are uploaded as a seven-day workflow artifact even when tests fail.
+
+Create GitHub Actions **Environments** named `dev`, `qa`, `uat`, and/or `prod` for the
+environments you use. Add the configuration below as environment variables or secrets
+(URLs and other non-sensitive settings as variables; credentials and certificates as
+secrets). The workflow creates the temporary `.<environment>.env` needed by validation;
+it does not read or upload a local environment file or use GitLab Secure Files.
+
+| GitHub setting | Type | Required | Purpose |
+|---|---|---|---|
+| `APP_URL` or `LOAN_APP_URL` | Variable | Yes | Legacy base URL used by environment validation |
+| `APP_NAME` | Variable | No | App name; defaults to `Playwright E2E Framework` |
+| `LOAN_APP_URL`, `LENDING_APP_URL` | Variables | Yes for selected apps | App URLs from `apps.config.json` |
+| `LOAN_CERT_P12_BASE64`, `LENDING_CERT_P12_BASE64` | Secrets | Yes for selected certificate-enabled apps | Base64 PKCS#12 client certificates |
+| `CERT_P12_BASE64` | Secret | If using legacy single-app tests | Legacy client certificate |
+| `JIRA_BASE_URL`, `JIRA_PROJECT_KEY` | Variables | For Xray upload | Jira site and project |
+| `JIRA_XRAY_API_TOKEN` | Secret | For Xray upload | Xray API token |
+| `XRAY_CA_PEM_BASE64` | Secret | If Jira uses a custom CA | Optional base64 CA certificate |
+| `SMTP_USER`, `SMTP_PASS` | Secrets | For email reports | SMTP credentials (`SMTP_PASS` is base64-encoded) |
+| `SMTP_HOST`, `SMTP_PORT`, `REPORT_TO`, `REPORT_FROM` | Variables | For email reports | SMTP and report recipient settings |
+| `TAG`, `APPS` | Variables | No | Defaults for scheduled/push runs; manual inputs override them |
+| `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_NAME` | Variables; `DB_PASSWORD` as a secret | If tests use PostgreSQL | Database connection settings |
+
+The test runner expects the configured application URLs to be reachable from the GitHub
+hosted runner. Secrets are unavailable to workflows triggered by fork pull requests, so
+those runs need to be initiated from a trusted branch or use a self-hosted runner with an
+appropriate secret policy.
+
 Modular scripts in `scripts/`:
 
 | Script | Purpose |

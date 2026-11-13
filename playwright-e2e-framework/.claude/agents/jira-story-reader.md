@@ -34,7 +34,11 @@ All Jira access goes through the `Atlassian-Rovo-MCP` server (configured in both
 - **Claude Code:** these tools may be deferred. Load them in one call first:
   `ToolSearch` with query
   `"select:mcp__Atlassian-Rovo-MCP__getAccessibleAtlassianResources,mcp__Atlassian-Rovo-MCP__getJiraIssue,mcp__Atlassian-Rovo-MCP__listJiraIssueComments,mcp__Atlassian-Rovo-MCP__searchJiraIssuesUsingJql,mcp__Atlassian-Rovo-MCP__discover,mcp__Atlassian-Rovo-MCP__executeRead"`.
-- **GitHub Copilot:** the tools are already available as `Atlassian-Rovo-MCP/*`.
+- **GitHub Copilot:** the tools may be granted as `Atlassian-Rovo-MCP/*`. Do not decide
+  they are unavailable because `getJiraIssue` is not individually listed; invoke the
+  required Rovo tool when performing the task. Report `MCP-UNAVAILABLE` only if an actual
+  invocation is rejected because the tool or server is unavailable. Report authentication
+  or permission errors as such and follow the diagnostics guidance below.
 
 **Site:** never hardcode a Jira URL or cloudId. Read `JIRA_BASE_URL` from the active env
 file — `.${ENV:-dev}.env` (e.g. `.dev.env`, `.qa.env`) — reading only that line, not

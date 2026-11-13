@@ -1,7 +1,7 @@
 ---
 name: test-orchestrator
 description: "Single entry point for E2E test automation requests. Classifies the request into one of a fixed set of intents, announces the detected intent and route, then invokes the right sub-agent(s) — either one targeted agent for a specific task, or the full new-tests pipeline (Jira story → plan → generate → heal → review → PR → Xray test cases → execution → summary). Use for any request about creating, updating, fixing, exploring, or executing E2E tests, or creating/raising PRs and Jira test cases for them."
-tools: ['agent', 'read', 'search', 'execute', 'todo']
+tools: ['agent', 'read', 'search', 'execute', 'todo', 'Atlassian-Rovo-MCP/*', 'playwright-test/*', 'github/*', 'gitlab/*']
 agents: ['jira-story-reader', 'playwright-test-planner', 'playwright-test-generator', 'playwright-test-healer', 'code-review', 'code-refactor', 'create-pull-request', 'test-case-creator', 'test-case-executor']
 ---
 
